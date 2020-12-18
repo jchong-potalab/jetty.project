@@ -156,7 +156,7 @@ public class QuicConnector extends AbstractNetworkConnector
     }
 
     @Override
-    protected void accept(int acceptorID) throws IOException, InterruptedException
+    protected void accept(int acceptorID) throws IOException
     {
         DatagramChannel channel = _acceptChannel;
         if (channel != null && channel.isOpen())
