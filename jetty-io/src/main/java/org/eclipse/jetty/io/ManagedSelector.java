@@ -368,7 +368,7 @@ public class ManagedSelector extends ContainerLifeCycle implements Dumpable
             LOG.debug("Created {}", endPoint);
     }
 
-    void destroyEndPoint(EndPoint endPoint, Throwable cause)
+    public void destroyEndPoint(EndPoint endPoint, Throwable cause)
     {
         // Waking up the selector is necessary to clean the
         // cancelled-key set and tell the TCP stack that the
