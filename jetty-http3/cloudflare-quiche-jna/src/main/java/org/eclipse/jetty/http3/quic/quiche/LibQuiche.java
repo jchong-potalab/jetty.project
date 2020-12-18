@@ -1,23 +1,6 @@
-//
-// ========================================================================
-// Copyright (c) 1995-2020 Mort Bay Consulting Pty Ltd and others.
-//
-// This program and the accompanying materials are made available under
-// the terms of the Eclipse Public License 2.0 which is available at
-// https://www.eclipse.org/legal/epl-2.0
-//
-// This Source Code may also be made available under the following
-// Secondary Licenses when the conditions for such availability set
-// forth in the Eclipse Public License, v. 2.0 are satisfied:
-// the Apache License v2.0 which is available at
-// https://www.apache.org/licenses/LICENSE-2.0
-//
-// SPDX-License-Identifier: EPL-2.0 OR Apache-2.0
-// ========================================================================
-//
-
 package org.eclipse.jetty.http3.quic.quiche;
 
+import java.nio.ByteBuffer;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import com.sun.jna.Callback;
@@ -30,7 +13,7 @@ import org.slf4j.LoggerFactory;
 
 public interface LibQuiche extends Library
 {
-    //TODO load different libs based upon the platform
+    // TODO detect OS/arch then load the right lib
     LibQuiche INSTANCE = Native.load("quiche-linux-x86_64", LibQuiche.class);
 
     class Logging
@@ -56,6 +39,11 @@ public interface LibQuiche extends Library
 
     // The minimum length of Initial packets sent by a client.
     int QUICHE_MIN_CLIENT_INITIAL_LEN = 1200;
+
+    interface quiche_cc_algorithm {
+        int QUICHE_CC_RENO = 0,
+        QUICHE_CC_CUBIC = 1;
+    };
 
     interface quiche_error {
         // There is no more work to do.
@@ -107,6 +95,10 @@ public interface LibQuiche extends Library
         {
             if (err == QUICHE_ERR_DONE)
                 return "QUICHE_ERR_DONE";
+            if (err == QUICHE_ERR_BUFFER_TOO_SHORT)
+                return "QUICHE_ERR_BUFFER_TOO_SHORT";
+            if (err == QUICHE_ERR_INVALID_TRANSPORT_PARAM)
+                return "QUICHE_ERR_INVALID_TRANSPORT_PARAM";
             if (err == QUICHE_ERR_TLS_FAIL)
                 return "QUICHE_ERR_TLS_FAIL";
 
@@ -127,14 +119,23 @@ public interface LibQuiche extends Library
     // Creates a config object with the given version.
     quiche_config quiche_config_new(uint32_t version);
 
+    // Sets the congestion control algorithm used.
+    void quiche_config_set_cc_algorithm(quiche_config config, int/*quiche_cc_algorithm*/ algo);
+
+    // Configures the given certificate chain.
+    int quiche_config_load_cert_chain_from_pem_file(quiche_config config, String path);
+
+    // Configures the given private key.
+    int quiche_config_load_priv_key_from_pem_file(quiche_config config, String path);
+
+    // Configures whether to verify the peer's certificate.
+    void quiche_config_verify_peer(quiche_config config, boolean v);
+
     // Configures the list of supported application protocols.
     int quiche_config_set_application_protos(quiche_config config, String protos, size_t protos_len);
 
     // Sets the `max_idle_timeout` transport parameter.
     void quiche_config_set_max_idle_timeout(quiche_config config, uint64_t v);
-
-    // Sets the `max_udp_payload_size transport` parameter.
-    void quiche_config_set_max_recv_udp_payload_size(quiche_config config, size_t v);
 
     // Sets the maximum outgoing UDP payload size.
     void quiche_config_set_max_send_udp_payload_size(quiche_config config, size_t v);
@@ -204,10 +205,63 @@ public interface LibQuiche extends Library
     }
 
     // Enables logging. |cb| will be called with log messages
-    int quiche_enable_debug_logging(LoggingCallback loggingCallback, Pointer argp);
+    int quiche_enable_debug_logging(LoggingCallback cb, Pointer argp);
 
     // Creates a new client-side connection.
     quiche_conn quiche_connect(String server_name, byte[] scid, size_t scid_len, quiche_config config);
+
+    interface packet_type
+    {
+        byte INITIAL = 1,
+             RETRY = 2,
+             HANDSHAKE = 3,
+             ZERO_RTT = 4,
+             SHORT = 5,
+             VERSION_NEGOTIATION = 6;
+
+        static String typeToString(byte type)
+        {
+            if (type == INITIAL)
+                return "INITIAL";
+            if (type == RETRY)
+                return "RETRY";
+            if (type == HANDSHAKE)
+                return "HANDSHAKE";
+            if (type == ZERO_RTT)
+                return "ZERO_RTT";
+            if (type == SHORT)
+                return "SHORT";
+            if (type == VERSION_NEGOTIATION)
+                return "VERSION_NEGOTIATION";
+            return "?? " + type;
+        }
+    }
+
+        // Extracts version, type, source / destination connection ID and address
+    // verification token from the packet in |buf|.
+    int quiche_header_info(ByteBuffer buf, size_t buf_len, size_t dcil,
+                           uint32_t_pointer version, uint8_t_pointer type,
+                           byte[] scid, size_t_pointer scid_len,
+                           byte[] dcid, size_t_pointer dcid_len,
+                           byte[] token, size_t_pointer token_len);
+
+    // Returns true if the given protocol version is supported.
+    boolean quiche_version_is_supported(uint32_t version);
+
+    // Writes a version negotiation packet.
+    ssize_t quiche_negotiate_version(byte[] scid, size_t scid_len,
+                                                                   byte[] dcid, size_t dcid_len,
+                                                                   ByteBuffer out, size_t out_len);
+
+    // Writes a retry packet.
+    ssize_t quiche_retry(byte[] scid, size_t scid_len,
+                                                       byte[] dcid, size_t dcid_len,
+                                                       byte[] new_scid, size_t new_scid_len,
+                                                       byte[] token, size_t token_len,
+                                                       uint32_t version, ByteBuffer out, size_t out_len);
+
+    // Creates a new server-side connection.
+    quiche_conn quiche_accept(byte[] scid, size_t scid_len, byte[] odcid, size_t odcid_len, quiche_config config);
 
     // Returns the amount of time until the next timeout event, in milliseconds.
     uint64_t quiche_conn_timeout_as_millis(quiche_conn conn);
@@ -219,16 +273,17 @@ public interface LibQuiche extends Library
     void quiche_conn_stats(quiche_conn conn, quiche_stats out);
 
     // Writes a single QUIC packet to be sent to the peer.
-    ssize_t quiche_conn_send(quiche_conn conn, Pointer out, size_t out_len);
+    ssize_t quiche_conn_send(quiche_conn conn, ByteBuffer out, size_t out_len);
 
     // Processes QUIC packets received from the peer.
-    ssize_t quiche_conn_recv(quiche_conn conn, Pointer buf, size_t buf_len);
+    ssize_t quiche_conn_recv(quiche_conn conn, ByteBuffer buf, size_t buf_len);
 
     // Returns true if the connection handshake is complete.
     boolean quiche_conn_is_established(quiche_conn conn);
 
-    // Returns true if the connection is draining.
-    boolean quiche_conn_is_draining(quiche_conn conn);
+    // Returns true if the connection has a pending handshake that has progressed
+    // enough to send or receive early data.
+    boolean quiche_conn_is_in_early_data(quiche_conn conn);
 
     // Returns true if the connection is closed.
     boolean quiche_conn_is_closed(quiche_conn conn);
@@ -269,12 +324,10 @@ public interface LibQuiche extends Library
     void quiche_stream_iter_free(quiche_stream_iter iter);
 
     // Reads contiguous data from a stream.
-    ssize_t quiche_conn_stream_recv(quiche_conn conn, uint64_t stream_id,
-                                    byte[] out, size_t buf_len, bool_pointer fin);
+    ssize_t quiche_conn_stream_recv(quiche_conn conn, uint64_t stream_id, byte[] out, size_t buf_len, bool_pointer fin);
 
     // Writes data to a stream.
-    ssize_t quiche_conn_stream_send(quiche_conn conn, uint64_t stream_id,
-                                byte[] buf, size_t buf_len, boolean fin);
+    ssize_t quiche_conn_stream_send(quiche_conn conn, uint64_t stream_id, byte[] buf, size_t buf_len, boolean fin);
 
     // Frees the connection object.
     void quiche_conn_free(quiche_conn conn);
