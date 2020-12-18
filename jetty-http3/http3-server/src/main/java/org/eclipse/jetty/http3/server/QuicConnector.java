@@ -168,6 +168,7 @@ public class QuicConnector extends AbstractNetworkConnector
 
     private void accepted(DatagramChannel channel) throws IOException
     {
+        channel.configureBlocking(false);
         _manager.accept(channel);
     }
 
