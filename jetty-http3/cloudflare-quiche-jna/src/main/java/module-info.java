@@ -19,6 +19,7 @@
 module org.eclipse.jetty.http3.quic
 {
     exports org.eclipse.jetty.http3.quic.quiche;
+    exports org.eclipse.jetty.http3.quic;
 
     requires org.slf4j;
     requires com.sun.jna;

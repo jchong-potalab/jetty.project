@@ -4,13 +4,21 @@ import java.io.Closeable;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.ServerSocket;
+import java.net.SocketAddress;
+import java.nio.ByteBuffer;
 import java.nio.channels.DatagramChannel;
 import java.nio.channels.SelectableChannel;
 import java.nio.channels.SelectionKey;
 import java.util.EventListener;
+import java.util.Iterator;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.Executor;
 import java.util.concurrent.atomic.AtomicReference;
 
+import org.eclipse.jetty.http3.quic.QuicRawConnection;
+import org.eclipse.jetty.http3.quic.QuicStream;
+import org.eclipse.jetty.io.AbstractEndPoint;
 import org.eclipse.jetty.io.ByteBufferPool;
 import org.eclipse.jetty.io.Connection;
 import org.eclipse.jetty.io.EndPoint;
@@ -25,7 +33,7 @@ import org.eclipse.jetty.util.annotation.ManagedAttribute;
 import org.eclipse.jetty.util.annotation.Name;
 import org.eclipse.jetty.util.thread.Scheduler;
 
-public class QuicConnector extends AbstractNetworkConnector
+public class QuicConnector extends AbstractNetworkConnector implements ManagedSelector.Selectable
 {
     private final SelectorManager _manager;
     private final AtomicReference<Closeable> _acceptor = new AtomicReference<>();
@@ -36,7 +44,7 @@ public class QuicConnector extends AbstractNetworkConnector
     public QuicConnector(
         @Name("server") Server server)
     {
-        this(server, null, null, null, -1, -1, new HttpConnectionFactory());
+        this(server, null, null, null, -1, new HttpConnectionFactory());
     }
 
     public QuicConnector(
@@ -44,12 +52,11 @@ public class QuicConnector extends AbstractNetworkConnector
         @Name("executor") Executor executor,
         @Name("scheduler") Scheduler scheduler,
         @Name("bufferPool") ByteBufferPool bufferPool,
-        @Name("acceptors") int acceptors,
         @Name("selectors") int selectors,
         @Name("factories") ConnectionFactory... factories
     )
     {
-        super(server, executor, scheduler, bufferPool, acceptors, factories);
+        super(server, executor, scheduler, bufferPool, 0, factories);
         _manager = newSelectorManager(getExecutor(), getScheduler(), selectors);
         addBean(_manager, true);
     }
@@ -73,11 +80,95 @@ public class QuicConnector extends AbstractNetworkConnector
 
         super.doStart();
 
-        if (getAcceptors() == 0)
+        _acceptChannel.configureBlocking(false);
+        _manager.accept(_acceptChannel, this);
+    }
+
+    final ConcurrentMap<QuicRawConnection.QuicConnectionId, AbstractEndPoint> _endpoints = new ConcurrentHashMap<>();
+    final ConcurrentMap<QuicRawConnection.QuicConnectionId, QuicRawConnection> _connections = new ConcurrentHashMap<>();
+
+    final ConcurrentMap<Long, AbstractEndPoint> _endpoints2 = new ConcurrentHashMap<>();
+
+    @Override
+    public Runnable onSelected()
+    {
+        //TODO alternate between reading and writing
+
+        ByteBuffer packetRead = getByteBufferPool().acquire(1500, true); //TODO replace 1500 with MTU
+        try
         {
-            _acceptChannel.configureBlocking(false);
-            _acceptor.set(_manager.acceptor(_acceptChannel));
+            while (true)
+            {
+                SocketAddress peer = _acceptChannel.receive(packetRead);
+                if (peer == null)
+                    break;
+
+                while (packetRead.remaining() != 0)
+                {
+                    QuicRawConnection.QuicConnectionId quicConnectionId = QuicRawConnection.connectionId(packetRead);
+                    QuicRawConnection connection = _connections.get(quicConnectionId);
+                    if (connection != null)
+                    {
+                        connection.recv(packetRead);
+
+                        Iterator<QuicStream> it = connection.readableStreamsIterator();
+                        while (it.hasNext())
+                        {
+                            QuicStream stream = it.next();
+                            long streamId = stream.getStreamId();
+                            AbstractEndPoint endPoint = _endpoints2.get(streamId);
+
+                            // the following 3 lines could go into fill()
+//                            byte[] buf = new byte[8192];
+//                            stream.read(buf);
+//                            endPoint.dataArrived(buf);
+
+                            endPoint.getFillInterest().fillable();
+                        }
+                        //TODO figure out if we need to write
+
+                    }
+                    else
+                    {
+                        //TODO this buffer has to be released eventually
+                        ByteBuffer packetToWrite = getByteBufferPool().acquire(1500, true); //TODO replace 1500 with MTU
+                        QuicRawConnection newQuicConnection = QuicRawConnection.tryAccept(null, peer, packetRead, packetToWrite);
+                        packetToWrite.flip();
+                        //TODO what if it does not write?
+                        int written = _acceptChannel.send(packetToWrite, peer);
+                        packetToWrite.clear();
+                        if (newQuicConnection != null)
+                        {
+                            _connections.put(quicConnectionId, newQuicConnection);
+                        }
+                    }
+
+                }
+
+            }
         }
+        catch (IOException e)
+        {
+            e.printStackTrace();
+        }
+        finally
+        {
+            getByteBufferPool().release(packetRead);
+        }
+
+        return null;
+    }
+
+    @Override
+    public void updateKey()
+    {
+
+    }
+
+    @Override
+    public void replaceKey(SelectionKey newKey)
+    {
+
     }
 
     @Override
@@ -103,7 +194,6 @@ public class QuicConnector extends AbstractNetworkConnector
         if (_acceptChannel == null)
         {
             _acceptChannel = openAcceptChannel();
-            _acceptChannel.configureBlocking(true);
             _localPort = _acceptChannel.socket().getLocalPort();
             if (_localPort <= 0)
                 throw new IOException("Server channel not bound");
@@ -119,7 +209,7 @@ public class QuicConnector extends AbstractNetworkConnector
         {
             channel.socket().setReuseAddress(_reuseAddress);
             channel.socket().bind(bindAddress);
-            channel.configureBlocking(false);
+//            channel.configureBlocking(true);
         }
         catch (Throwable e)
         {

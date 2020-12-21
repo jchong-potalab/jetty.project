@@ -738,6 +738,49 @@ public class ManagedSelector extends ContainerLifeCycle implements Dumpable
         }
     }
 
+    class UdpAcceptor implements SelectorUpdate, Selectable
+    {
+        private final SelectableChannel _channel;
+        private SelectionKey _key;
+
+        UdpAcceptor(SelectableChannel channel)
+        {
+            _channel = channel;
+        }
+
+        @Override
+        public Runnable onSelected()
+        {
+            return null;
+        }
+
+        @Override
+        public void updateKey()
+        {
+
+        }
+
+        @Override
+        public void replaceKey(SelectionKey newKey)
+        {
+
+        }
+
+        @Override
+        public void update(Selector selector)
+        {
+            try
+            {
+                _key = _channel.register(selector, SelectionKey.OP_READ, this);
+            }
+            catch (Throwable x)
+            {
+                IO.close(_channel);
+                LOG.warn("Unable to register OP_READ on selector for {}", _channel, x);
+            }
+        }
+    }
+
     class Acceptor implements SelectorUpdate, Selectable, Closeable
     {
         private final SelectableChannel _channel;
