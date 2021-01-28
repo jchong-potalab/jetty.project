@@ -62,6 +62,13 @@ public class HttpInput extends ServletInputStream implements Runnable
         _contentConsumed = 0;
     }
 
+    public void servletUpgrade()
+    {
+        ReadListener listener = _readListener;
+        recycle();
+        setReadListener(listener);
+    }
+
     /**
      * @return The current Interceptor, or null if none set
      */

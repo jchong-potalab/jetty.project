@@ -1888,6 +1888,13 @@ public class HttpParser
         _headerComplete = false;
     }
 
+    public void servletUpgrade()
+    {
+        setState(State.CONTENT);
+        _endOfContent = EndOfContent.UNKNOWN_CONTENT;
+        _contentLength = Integer.MAX_VALUE;
+    }
+
     protected void setState(State state)
     {
         if (debugEnabled)

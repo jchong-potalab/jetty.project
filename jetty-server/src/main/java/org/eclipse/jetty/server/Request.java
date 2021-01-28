@@ -20,6 +20,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.UnsupportedEncodingException;
+import java.lang.reflect.InvocationTargetException;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.UnknownHostException;
@@ -47,6 +48,7 @@ import javax.servlet.RequestDispatcher;
 import javax.servlet.ServletContext;
 import javax.servlet.ServletException;
 import javax.servlet.ServletInputStream;
+import javax.servlet.ServletOutputStream;
 import javax.servlet.ServletRequest;
 import javax.servlet.ServletRequestAttributeEvent;
 import javax.servlet.ServletRequestAttributeListener;
@@ -61,6 +63,7 @@ import javax.servlet.http.HttpSession;
 import javax.servlet.http.HttpUpgradeHandler;
 import javax.servlet.http.Part;
 import javax.servlet.http.PushBuilder;
+import javax.servlet.http.WebConnection;
 
 import org.eclipse.jetty.http.BadMessageException;
 import org.eclipse.jetty.http.ComplianceViolation;
@@ -78,6 +81,7 @@ import org.eclipse.jetty.http.HttpURI;
 import org.eclipse.jetty.http.HttpVersion;
 import org.eclipse.jetty.http.MetaData;
 import org.eclipse.jetty.http.MimeTypes;
+import org.eclipse.jetty.io.Connection;
 import org.eclipse.jetty.io.RuntimeIOException;
 import org.eclipse.jetty.server.handler.ContextHandler;
 import org.eclipse.jetty.server.handler.ContextHandler.Context;
@@ -2372,7 +2376,92 @@ public class Request implements HttpServletRequest
     @Override
     public <T extends HttpUpgradeHandler> T upgrade(Class<T> handlerClass) throws IOException, ServletException
     {
-        throw new ServletException("HttpServletRequest.upgrade() not supported in Jetty");
+        try
+        {
+            HttpConnection connection = (HttpConnection)getAttribute(HttpConnection.class.getName());
+            HttpChannel httpChannel = connection.getHttpChannel();
+            ServletOutputStream outputStream = httpChannel.getResponse().getOutputStream();
+            ServletInputStream inputStream = getInputStream();
+
+            httpChannel.getResponse().setStatus(200); // change the response from state 101 so it can send data back
+
+            AsyncContext asyncContext = forceStartAsync();
+            T t = handlerClass.getDeclaredConstructor().newInstance();
+            t.init(new WebConnection()
+            {
+                @Override
+                public ServletInputStream getInputStream() throws IOException
+                {
+                    return inputStream;
+                }
+
+                @Override
+                public ServletOutputStream getOutputStream() throws IOException
+                {
+                    return outputStream;
+                }
+
+                @Override
+                public void close() throws Exception
+                {
+                    inputStream.close();
+                    outputStream.close();
+                }
+            });
+            connection.addEventListener(new Connection.Listener()
+            {
+                @Override
+                public void onOpened(Connection connection)
+                {
+                }
+
+                @Override
+                public void onClosed(Connection connection)
+                {
+                    try
+                    {
+                        asyncContext.complete();
+                    }
+                    catch (Exception e)
+                    {
+                        LOG.warn("error during upgrade AsyncContext complete", e);
+                    }
+                    try
+                    {
+                        t.destroy();
+                    }
+                    catch (Exception e)
+                    {
+                        LOG.warn("error during upgrade HttpUpgradeHandler destroy", e);
+                    }
+                    connection.removeEventListener(this);
+                }
+            });
+
+            connection.getParser().servletUpgrade(); // tell the parser it's now parsing content
+            ((HttpChannelOverHttp)httpChannel).servletUpgrade(); // notifies channel that its EOF content is to be dropped
+            getHttpInput().servletUpgrade(); // the http input is stuck at EOF content, reset it to a pristine state
+
+            return t;
+        }
+        catch (InstantiationException | IllegalAccessException | InvocationTargetException | NoSuchMethodException e)
+        {
+            throw new ServletException(e);
+        }
+    }
+
+    private AsyncContextState forceStartAsync()
+    {
+        Request baseRequest = Request.getBaseRequest(this);
+        if (baseRequest == null)
+            baseRequest = this;
+        baseRequest.setAsyncSupported(true, "upgrade");
+        HttpChannelState state = getHttpChannelState();
+        if (_async == null)
+            _async = new AsyncContextState(state);
+        AsyncContextEvent event = new AsyncContextEvent(_context, _async, state, this, this, getResponse());
+        state.startAsync(event);
+        return _async;
     }
 
     /**

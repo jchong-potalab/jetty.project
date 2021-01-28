@@ -557,6 +557,11 @@ public class HttpChannelOverHttp extends HttpChannel implements HttpParser.Reque
         _content = null;
     }
 
+    public void servletUpgrade()
+    {
+        _content = null;
+    }
+
     @Override
     public void startRequest(String method, String uri, HttpVersion version)
     {
