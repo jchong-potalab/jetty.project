@@ -2380,23 +2380,29 @@ public class Request implements HttpServletRequest
         {
             HttpConnection connection = (HttpConnection)getAttribute(HttpConnection.class.getName());
             HttpChannel httpChannel = connection.getHttpChannel();
-            ServletOutputStream outputStream = httpChannel.getResponse().getOutputStream();
+            Response response = httpChannel.getResponse();
+            ServletOutputStream outputStream = response.getOutputStream();
             ServletInputStream inputStream = getInputStream();
 
-            httpChannel.getResponse().setStatus(200); // change the response from state 101 so it can send data back
+            if (response.getStatus() != HttpStatus.SWITCHING_PROTOCOLS_101)
+                throw new IllegalStateException("Response status should be 101");
+
+            response.setStatus(200); // change the response from state 101 so it can send data back
+            if (!response.isCommitted())
+                response.flushBuffer();
 
             AsyncContext asyncContext = forceStartAsync();
-            T t = handlerClass.getDeclaredConstructor().newInstance();
-            t.init(new WebConnection()
+            T handler = handlerClass.getDeclaredConstructor().newInstance();
+            handler.init(new WebConnection()
             {
                 @Override
-                public ServletInputStream getInputStream() throws IOException
+                public ServletInputStream getInputStream()
                 {
                     return inputStream;
                 }
 
                 @Override
-                public ServletOutputStream getOutputStream() throws IOException
+                public ServletOutputStream getOutputStream()
                 {
                     return outputStream;
                 }
@@ -2404,8 +2410,14 @@ public class Request implements HttpServletRequest
                 @Override
                 public void close() throws Exception
                 {
-                    inputStream.close();
-                    outputStream.close();
+                    try
+                    {
+                        inputStream.close();
+                    }
+                    finally
+                    {
+                        outputStream.close();
+                    }
                 }
             });
             connection.addEventListener(new Connection.Listener()
@@ -2428,7 +2440,7 @@ public class Request implements HttpServletRequest
                     }
                     try
                     {
-                        t.destroy();
+                        handler.destroy();
                     }
                     catch (Exception e)
                     {
@@ -2442,20 +2454,16 @@ public class Request implements HttpServletRequest
             ((HttpChannelOverHttp)httpChannel).servletUpgrade(); // notifies channel that its EOF content is to be dropped
             getHttpInput().servletUpgrade(); // the http input is stuck at EOF content, reset it to a pristine state
 
-            return t;
+            return handler;
         }
         catch (InstantiationException | IllegalAccessException | InvocationTargetException | NoSuchMethodException e)
         {
-            throw new ServletException(e);
+            throw new ServletException("Unable to instantiate handler class", e);
         }
     }
 
     private AsyncContextState forceStartAsync()
     {
-        Request baseRequest = Request.getBaseRequest(this);
-        if (baseRequest == null)
-            baseRequest = this;
-        baseRequest.setAsyncSupported(true, "upgrade");
         HttpChannelState state = getHttpChannelState();
         if (_async == null)
             _async = new AsyncContextState(state);
