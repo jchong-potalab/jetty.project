@@ -2378,18 +2378,16 @@ public class Request implements HttpServletRequest
     {
         try
         {
-            HttpConnection httpConnection = (HttpConnection)getAttribute(HttpConnection.class.getName());
-            HttpChannel httpChannel = httpConnection.getHttpChannel();
-            Response response = httpChannel.getResponse();
-
+            Response response = _channel.getResponse();
             if (response.getStatus() != HttpStatus.SWITCHING_PROTOCOLS_101)
                 throw new IllegalStateException("Response status should be 101");
             if (response.isCommitted())
                 throw new IllegalStateException("Cannot upgrade committed response");
 
             AsyncContext asyncContext = forceStartAsync(); // force the servlet in async mode
+            HttpConnection httpConnection = (HttpConnection)_channel.getConnection();
             httpConnection.getParser().servletUpgrade(); // tell the parser it's now parsing content
-            httpChannel.servletUpgrade(); // tell the channel that it is now handling an upgraded servlet
+            _channel.servletUpgrade(); // tell the channel that it is now handling an upgraded servlet
 
             T handler = handlerClass.getDeclaredConstructor().newInstance();
             ServletOutputStream outputStream = response.getOutputStream();
