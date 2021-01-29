@@ -84,6 +84,7 @@ public abstract class HttpChannel implements Runnable, HttpOutput.Interceptor
     private MetaData.Response _committedMetaData;
     private RequestLog _requestLog;
     private long _oldIdleTimeout;
+    private boolean _servletUpgrade;
 
     /**
      * Bytes written after interception (eg after compression)
@@ -122,6 +123,16 @@ public abstract class HttpChannel implements Runnable, HttpOutput.Interceptor
     private HttpInput newHttpInput(HttpChannelState state)
     {
         return new HttpInput(state);
+    }
+
+    void servletUpgrade()
+    {
+        _servletUpgrade = true;
+    }
+
+    protected boolean isServletUpgrade()
+    {
+        return _servletUpgrade;
     }
 
     /**
@@ -343,6 +354,7 @@ public abstract class HttpChannel implements Runnable, HttpOutput.Interceptor
         _written = 0;
         _oldIdleTimeout = 0;
         _transientListeners.clear();
+        _servletUpgrade = false;
     }
 
     @Override

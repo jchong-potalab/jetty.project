@@ -2451,7 +2451,7 @@ public class Request implements HttpServletRequest
             });
 
             connection.getParser().servletUpgrade(); // tell the parser it's now parsing content
-            ((HttpChannelOverHttp)httpChannel).servletUpgrade(); // notifies channel that its EOF content is to be dropped
+            httpChannel.servletUpgrade(); // notifies channel that its EOF content is to be dropped
             getHttpInput().servletUpgrade(); // unshackle the http input from its EOF content
 
             return handler;

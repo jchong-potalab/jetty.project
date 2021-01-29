@@ -66,7 +66,6 @@ public class HttpChannelOverHttp extends HttpChannel implements HttpParser.Reque
     // events like timeout: we get notified and either schedule onError or release the
     // blocking semaphore.
     private HttpInput.Content _content;
-    private boolean _servletUpgrade;
 
     public HttpChannelOverHttp(HttpConnection httpConnection, Connector connector, HttpConfiguration config, EndPoint endPoint, HttpTransport transport)
     {
@@ -263,7 +262,7 @@ public class HttpChannelOverHttp extends HttpChannel implements HttpParser.Reque
     {
         if (LOG.isDebugEnabled())
             LOG.debug("received early EOF, content = {}", _content);
-        if (_servletUpgrade)
+        if (isServletUpgrade())
         {
             if (_content != null)
                 _content.succeeded();
@@ -565,13 +564,14 @@ public class HttpChannelOverHttp extends HttpChannel implements HttpParser.Reque
         if (_content != null && !_content.isSpecial())
             throw new AssertionError("unconsumed content: " + _content);
         _content = null;
-        _servletUpgrade = false;
     }
 
     public void servletUpgrade()
     {
-        _servletUpgrade = true;
+        if (!_content.isSpecial() || !_content.isEof())
+            throw new IllegalStateException("Cannot perform servlet upgrade with unconsumed content");
         _content = null;
+        super.servletUpgrade();
     }
 
     @Override
