@@ -2387,11 +2387,6 @@ public class Request implements HttpServletRequest
         if (response.isCommitted())
             throw new IllegalStateException("Cannot upgrade committed response");
 
-        _channel.servletUpgrade(); // tell the channel that it is now handling an upgraded servlet
-        HttpConnection httpConnection = (HttpConnection)_channel.getConnection();
-        httpConnection.getParser().servletUpgrade(); // tell the parser it's now parsing content
-        AsyncContext asyncContext = forceStartAsync(); // force the servlet in async mode
-
         T handler;
         try
         {
@@ -2401,6 +2396,11 @@ public class Request implements HttpServletRequest
         {
             throw new ServletException("Unable to instantiate handler class", e);
         }
+
+        _channel.servletUpgrade(); // tell the channel that it is now handling an upgraded servlet
+        HttpConnection httpConnection = (HttpConnection)_channel.getConnection();
+        httpConnection.getParser().servletUpgrade(); // tell the parser it's now parsing content
+        AsyncContext asyncContext = forceStartAsync(); // force the servlet in async mode
 
         ServletOutputStream outputStream = response.getOutputStream();
         ServletInputStream inputStream = getInputStream();
