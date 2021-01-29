@@ -2378,11 +2378,9 @@ public class Request implements HttpServletRequest
     {
         try
         {
-            HttpConnection connection = (HttpConnection)getAttribute(HttpConnection.class.getName());
-            HttpChannel httpChannel = connection.getHttpChannel();
+            HttpConnection httpConnection = (HttpConnection)getAttribute(HttpConnection.class.getName());
+            HttpChannel httpChannel = httpConnection.getHttpChannel();
             Response response = httpChannel.getResponse();
-            ServletOutputStream outputStream = response.getOutputStream();
-            ServletInputStream inputStream = getInputStream();
 
             if (response.getStatus() != HttpStatus.SWITCHING_PROTOCOLS_101)
                 throw new IllegalStateException("Response status should be 101");
@@ -2390,10 +2388,12 @@ public class Request implements HttpServletRequest
                 throw new IllegalStateException("Cannot upgrade committed response");
 
             AsyncContext asyncContext = forceStartAsync(); // force the servlet in async mode
-            connection.getParser().servletUpgrade(); // tell the parser it's now parsing content
+            httpConnection.getParser().servletUpgrade(); // tell the parser it's now parsing content
             httpChannel.servletUpgrade(); // tell the channel that it is now handling an upgraded servlet
 
             T handler = handlerClass.getDeclaredConstructor().newInstance();
+            ServletOutputStream outputStream = response.getOutputStream();
+            ServletInputStream inputStream = getInputStream();
             handler.init(new WebConnection()
             {
                 @Override
@@ -2421,7 +2421,7 @@ public class Request implements HttpServletRequest
                     }
                 }
             });
-            connection.addEventListener(new Connection.Listener()
+            httpConnection.addEventListener(new Connection.Listener()
             {
                 @Override
                 public void onOpened(Connection connection)
