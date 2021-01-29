@@ -2386,10 +2386,10 @@ public class Request implements HttpServletRequest
 
             if (response.getStatus() != HttpStatus.SWITCHING_PROTOCOLS_101)
                 throw new IllegalStateException("Response status should be 101");
+            if (response.isCommitted())
+                throw new IllegalStateException("Cannot upgrade committed response");
 
             response.setStatus(200); // change the response from state 101 so it can send data back
-            if (!response.isCommitted())
-                response.flushBuffer();
 
             AsyncContext asyncContext = forceStartAsync();
             T handler = handlerClass.getDeclaredConstructor().newInstance();
@@ -2452,7 +2452,7 @@ public class Request implements HttpServletRequest
 
             connection.getParser().servletUpgrade(); // tell the parser it's now parsing content
             ((HttpChannelOverHttp)httpChannel).servletUpgrade(); // notifies channel that its EOF content is to be dropped
-            getHttpInput().servletUpgrade(); // the http input is stuck at EOF content, reset it to a pristine state
+            getHttpInput().servletUpgrade(); // unshackle the http input from its EOF content
 
             return handler;
         }
