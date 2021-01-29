@@ -206,6 +206,7 @@ public class MetaData implements Iterable<HttpField>
     {
         private final int _status;
         private final String _reason;
+        private final boolean _servletUpgrade;
 
         public Response(HttpVersion version, int status, HttpFields fields)
         {
@@ -224,9 +225,15 @@ public class MetaData implements Iterable<HttpField>
 
         public Response(HttpVersion version, int status, String reason, HttpFields fields, long contentLength, Supplier<HttpFields> trailers)
         {
+            this(version, status, reason, fields, contentLength, trailers, false);
+        }
+
+        public Response(HttpVersion version, int status, String reason, HttpFields fields, long contentLength, Supplier<HttpFields> trailers, boolean servletUpgrade)
+        {
             super(version, fields, contentLength, trailers);
             _reason = reason;
             _status = status;
+            _servletUpgrade = servletUpgrade;
         }
 
         @Override
@@ -249,6 +256,14 @@ public class MetaData implements Iterable<HttpField>
         public String getReason()
         {
             return _reason;
+        }
+
+        /**
+         * @return true if the response is of an upgrade done via the servlet API
+         */
+        public boolean isServletUpgrade()
+        {
+            return _servletUpgrade;
         }
 
         @Override

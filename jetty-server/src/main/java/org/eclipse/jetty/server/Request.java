@@ -143,6 +143,7 @@ import org.slf4j.LoggerFactory;
 public class Request implements HttpServletRequest
 {
     public static final String __MULTIPART_CONFIG_ELEMENT = "org.eclipse.jetty.multipartConfig";
+    public static final String __SERVLET_UPGRADE_HANDLER_ATTRIBUTE_NAME = "org.eclipse.jetty.HttpUpgradeHandler";
 
     private static final Logger LOG = LoggerFactory.getLogger(Request.class);
     private static final Collection<Locale> __defaultLocale = Collections.singleton(Locale.getDefault());
@@ -2389,10 +2390,9 @@ public class Request implements HttpServletRequest
             if (response.isCommitted())
                 throw new IllegalStateException("Cannot upgrade committed response");
 
-            response.setStatus(200); // change the response from state 101 so it can send data back
-
             AsyncContext asyncContext = forceStartAsync();
             T handler = handlerClass.getDeclaredConstructor().newInstance();
+            setAttribute(__SERVLET_UPGRADE_HANDLER_ATTRIBUTE_NAME, handler);
             handler.init(new WebConnection()
             {
                 @Override

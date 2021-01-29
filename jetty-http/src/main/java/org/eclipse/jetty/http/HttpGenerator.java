@@ -384,25 +384,28 @@ public class HttpGenerator
                     // generate ResponseLine
                     generateResponseLine(info, header);
 
-                    // Handle 1xx and no content responses
-                    int status = info.getStatus();
-                    if (status >= 100 && status < 200)
+                    if (!info.isServletUpgrade())
                     {
-                        _noContentResponse = true;
-
-                        if (status != HttpStatus.SWITCHING_PROTOCOLS_101)
+                        // Handle 1xx and no content responses
+                        int status = info.getStatus();
+                        if (status >= 100 && status < 200)
                         {
-                            header.put(HttpTokens.CRLF);
-                            _state = State.COMPLETING_1XX;
-                            return Result.FLUSH;
-                        }
-                    }
-                    else if (status == HttpStatus.NO_CONTENT_204 || status == HttpStatus.NOT_MODIFIED_304)
-                    {
-                        _noContentResponse = true;
-                    }
+                            _noContentResponse = true;
 
-                    generateHeaders(header, content, last);
+                            if (status != HttpStatus.SWITCHING_PROTOCOLS_101)
+                            {
+                                header.put(HttpTokens.CRLF);
+                                _state = State.COMPLETING_1XX;
+                                return Result.FLUSH;
+                            }
+                        }
+                        else if (status == HttpStatus.NO_CONTENT_204 || status == HttpStatus.NOT_MODIFIED_304)
+                        {
+                            _noContentResponse = true;
+                        }
+
+                        generateHeaders(header, content, last);
+                    }
 
                     // handle the content.
                     int len = BufferUtil.length(content);
