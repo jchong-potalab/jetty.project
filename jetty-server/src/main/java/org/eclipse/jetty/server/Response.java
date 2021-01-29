@@ -1284,8 +1284,7 @@ public class Response implements HttpServletResponse
 
     protected MetaData.Response newResponseMetaData()
     {
-        boolean servletUpgrade = getHttpChannel().getRequest().getAttribute(Request.__SERVLET_UPGRADE_HANDLER_ATTRIBUTE_NAME) != null;
-        return new MetaData.Response(_channel.getRequest().getHttpVersion(), getStatus(), getReason(), _fields, getLongContentLength(), getTrailers(), servletUpgrade);
+        return new MetaData.Response(_channel.getRequest().getHttpVersion(), getStatus(), getReason(), _fields, getLongContentLength(), getTrailers(), getHttpChannel().isServletUpgrade());
     }
 
     /**

@@ -568,7 +568,7 @@ public class HttpChannelOverHttp extends HttpChannel implements HttpParser.Reque
 
     public void servletUpgrade()
     {
-        if (!_content.isSpecial() || !_content.isEof())
+        if (_content != null && (!_content.isSpecial() || !_content.isEof()))
             throw new IllegalStateException("Cannot perform servlet upgrade with unconsumed content");
         _content = null;
         super.servletUpgrade();

@@ -143,7 +143,6 @@ import org.slf4j.LoggerFactory;
 public class Request implements HttpServletRequest
 {
     public static final String __MULTIPART_CONFIG_ELEMENT = "org.eclipse.jetty.multipartConfig";
-    public static final String __SERVLET_UPGRADE_HANDLER_ATTRIBUTE_NAME = "org.eclipse.jetty.HttpUpgradeHandler";
 
     private static final Logger LOG = LoggerFactory.getLogger(Request.class);
     private static final Collection<Locale> __defaultLocale = Collections.singleton(Locale.getDefault());
@@ -2390,9 +2389,11 @@ public class Request implements HttpServletRequest
             if (response.isCommitted())
                 throw new IllegalStateException("Cannot upgrade committed response");
 
-            AsyncContext asyncContext = forceStartAsync();
+            AsyncContext asyncContext = forceStartAsync(); // force the servlet in async mode
+            connection.getParser().servletUpgrade(); // tell the parser it's now parsing content
+            httpChannel.servletUpgrade(); // tell the channel that it is now handling an upgraded servlet
+
             T handler = handlerClass.getDeclaredConstructor().newInstance();
-            setAttribute(__SERVLET_UPGRADE_HANDLER_ATTRIBUTE_NAME, handler);
             handler.init(new WebConnection()
             {
                 @Override
@@ -2449,11 +2450,6 @@ public class Request implements HttpServletRequest
                     connection.removeEventListener(this);
                 }
             });
-
-            connection.getParser().servletUpgrade(); // tell the parser it's now parsing content
-            httpChannel.servletUpgrade(); // notifies channel that its EOF content is to be dropped
-            getHttpInput().servletUpgrade(); // unshackle the http input from its EOF content
-
             return handler;
         }
         catch (InstantiationException | IllegalAccessException | InvocationTargetException | NoSuchMethodException e)
