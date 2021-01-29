@@ -2376,84 +2376,86 @@ public class Request implements HttpServletRequest
     @Override
     public <T extends HttpUpgradeHandler> T upgrade(Class<T> handlerClass) throws IOException, ServletException
     {
+        Response response = _channel.getResponse();
+        if (response.getStatus() != HttpStatus.SWITCHING_PROTOCOLS_101)
+            throw new IllegalStateException("Response status should be 101");
+        if (response.isCommitted())
+            throw new IllegalStateException("Cannot upgrade committed response");
+
+        _channel.servletUpgrade(); // tell the channel that it is now handling an upgraded servlet
+        HttpConnection httpConnection = (HttpConnection)_channel.getConnection();
+        httpConnection.getParser().servletUpgrade(); // tell the parser it's now parsing content
+        AsyncContext asyncContext = forceStartAsync(); // force the servlet in async mode
+
+        T handler;
         try
         {
-            Response response = _channel.getResponse();
-            if (response.getStatus() != HttpStatus.SWITCHING_PROTOCOLS_101)
-                throw new IllegalStateException("Response status should be 101");
-            if (response.isCommitted())
-                throw new IllegalStateException("Cannot upgrade committed response");
-
-            _channel.servletUpgrade(); // tell the channel that it is now handling an upgraded servlet
-            HttpConnection httpConnection = (HttpConnection)_channel.getConnection();
-            httpConnection.getParser().servletUpgrade(); // tell the parser it's now parsing content
-            AsyncContext asyncContext = forceStartAsync(); // force the servlet in async mode
-
-            T handler = handlerClass.getDeclaredConstructor().newInstance();
-            ServletOutputStream outputStream = response.getOutputStream();
-            ServletInputStream inputStream = getInputStream();
-            handler.init(new WebConnection()
-            {
-                @Override
-                public ServletInputStream getInputStream()
-                {
-                    return inputStream;
-                }
-
-                @Override
-                public ServletOutputStream getOutputStream()
-                {
-                    return outputStream;
-                }
-
-                @Override
-                public void close() throws Exception
-                {
-                    try
-                    {
-                        inputStream.close();
-                    }
-                    finally
-                    {
-                        outputStream.close();
-                    }
-                }
-            });
-            httpConnection.addEventListener(new Connection.Listener()
-            {
-                @Override
-                public void onOpened(Connection connection)
-                {
-                }
-
-                @Override
-                public void onClosed(Connection connection)
-                {
-                    try
-                    {
-                        asyncContext.complete();
-                    }
-                    catch (Exception e)
-                    {
-                        LOG.warn("error during upgrade AsyncContext complete", e);
-                    }
-                    try
-                    {
-                        handler.destroy();
-                    }
-                    catch (Exception e)
-                    {
-                        LOG.warn("error during upgrade HttpUpgradeHandler destroy", e);
-                    }
-                    connection.removeEventListener(this);
-                }
-            });
-            return handler;
+            handler = handlerClass.getDeclaredConstructor().newInstance();
         }
         catch (InstantiationException | IllegalAccessException | InvocationTargetException | NoSuchMethodException e)
         {
             throw new ServletException("Unable to instantiate handler class", e);
         }
+
+        ServletOutputStream outputStream = response.getOutputStream();
+        ServletInputStream inputStream = getInputStream();
+        handler.init(new WebConnection()
+        {
+            @Override
+            public void close() throws Exception
+            {
+                try
+                {
+                    inputStream.close();
+                }
+                finally
+                {
+                    outputStream.close();
+                }
+            }
+
+            @Override
+            public ServletInputStream getInputStream()
+            {
+                return inputStream;
+            }
+
+            @Override
+            public ServletOutputStream getOutputStream()
+            {
+                return outputStream;
+            }
+        });
+        httpConnection.addEventListener(new Connection.Listener()
+        {
+            @Override
+            public void onClosed(Connection connection)
+            {
+                try
+                {
+                    asyncContext.complete();
+                }
+                catch (Exception e)
+                {
+                    LOG.warn("error during upgrade AsyncContext complete", e);
+                }
+                try
+                {
+                    handler.destroy();
+                }
+                catch (Exception e)
+                {
+                    LOG.warn("error during upgrade HttpUpgradeHandler destroy", e);
+                }
+                connection.removeEventListener(this);
+            }
+
+            @Override
+            public void onOpened(Connection connection)
+            {
+            }
+        });
+        return handler;
     }
 
     private AsyncContextState forceStartAsync()
