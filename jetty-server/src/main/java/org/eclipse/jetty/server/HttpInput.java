@@ -66,7 +66,8 @@ public class HttpInput extends ServletInputStream implements Runnable
     {
         ReadListener listener = _readListener;
         recycle();
-        setReadListener(listener);
+        if (listener != null)
+            setReadListener(listener);
     }
 
     /**
