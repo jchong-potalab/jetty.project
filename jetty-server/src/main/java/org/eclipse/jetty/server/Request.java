@@ -2144,6 +2144,11 @@ public class Request implements HttpServletRequest
     {
         if (_asyncNotSupportedSource != null)
             throw new IllegalStateException("!asyncSupported: " + _asyncNotSupportedSource);
+        return forceStartAsync();
+    }
+
+    private AsyncContextState forceStartAsync()
+    {
         HttpChannelState state = getHttpChannelState();
         if (_async == null)
             _async = new AsyncContextState(state);
@@ -2456,16 +2461,6 @@ public class Request implements HttpServletRequest
             }
         });
         return handler;
-    }
-
-    private AsyncContextState forceStartAsync()
-    {
-        HttpChannelState state = getHttpChannelState();
-        if (_async == null)
-            _async = new AsyncContextState(state);
-        AsyncContextEvent event = new AsyncContextEvent(_context, _async, state, this, this, getResponse());
-        state.startAsync(event);
-        return _async;
     }
 
     /**
