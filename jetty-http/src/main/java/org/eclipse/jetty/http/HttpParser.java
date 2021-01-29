@@ -1892,7 +1892,7 @@ public class HttpParser
     {
         setState(State.CONTENT);
         _endOfContent = EndOfContent.UNKNOWN_CONTENT;
-        _contentLength = Integer.MAX_VALUE;
+        _contentLength = 0;
     }
 
     protected void setState(State state)
