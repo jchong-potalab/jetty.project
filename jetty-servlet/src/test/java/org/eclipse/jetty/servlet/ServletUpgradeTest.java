@@ -17,7 +17,6 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.Socket;
-
 import javax.servlet.ReadListener;
 import javax.servlet.ServletException;
 import javax.servlet.ServletInputStream;
@@ -81,9 +80,9 @@ public class ServletUpgradeTest
         boolean passed1 = false;
         boolean passed2 = false;
         boolean passed3 = false;
-        String EXPECTED_RESPONSE1 = "TCKHttpUpgradeHandler.init";
-        String EXPECTED_RESPONSE2 = "onDataAvailable|Hello";
-        String EXPECTED_RESPONSE3 = "onDataAvailable|World";
+        String expectedResponse1 = "TCKHttpUpgradeHandler.init";
+        String expectedResponse2 = "onDataAvailable|Hello";
+        String expectedResponse3 = "onDataAvailable|World";
 
         InputStream input = null;
         OutputStream output = null;
@@ -128,17 +127,17 @@ public class ServletUpgradeTest
                 String line = new String(b, 0, len);
                 sb.append(line);
                 LOG.info("==============Read from server:" + CRLF + sb + CRLF);
-                if (passed1 = compareString(EXPECTED_RESPONSE1, sb.toString()))
+                if (passed1 = compareString(expectedResponse1, sb.toString()))
                 {
                     LOG.info("==============Received first expected response!" + CRLF);
                     receivedFirstMessage = true;
                 }
-                if (passed2 = compareString(EXPECTED_RESPONSE2, sb.toString()))
+                if (passed2 = compareString(expectedResponse2, sb.toString()))
                 {
                     LOG.info("==============Received second expected response!" + CRLF);
                     receivedSecondMessage = true;
                 }
-                if (passed3 = compareString(EXPECTED_RESPONSE3, sb.toString()))
+                if (passed3 = compareString(expectedResponse3, sb.toString()))
                 {
                     LOG.info("==============Received third expected response!" + CRLF);
                     receivedThirdMessage = true;
@@ -306,11 +305,11 @@ public class ServletUpgradeTest
 
     private static boolean compareString(String expected, String actual)
     {
-        String[] list_expected = expected.split("[|]");
+        String[] listExpected = expected.split("[|]");
         boolean found = true;
-        for (int i = 0, n = list_expected.length, startIdx = 0, bodyLength = actual.length(); i < n; i++)
+        for (int i = 0, n = listExpected.length, startIdx = 0, bodyLength = actual.length(); i < n; i++)
         {
-            String search = list_expected[i];
+            String search = listExpected[i];
             if (startIdx >= bodyLength)
             {
                 startIdx = bodyLength;
@@ -318,8 +317,7 @@ public class ServletUpgradeTest
 
             int searchIdx = actual.toLowerCase().indexOf(search.toLowerCase(), startIdx);
 
-            LOG.debug("[ServletTestUtil] Scanning response for " + "search string: '"
-                + search + "' starting at index " + "location: " + startIdx);
+            LOG.debug("[ServletTestUtil] Scanning response for " + "search string: '" + search + "' starting at index " + "location: " + startIdx);
             if (searchIdx < 0)
             {
                 found = false;
@@ -335,8 +333,7 @@ public class ServletUpgradeTest
                 break;
             }
 
-            LOG.debug("[ServletTestUtil] Found search string: '" + search + "' at index '"
-                + searchIdx + "' in the server's " + "response");
+            LOG.debug("[ServletTestUtil] Found search string: '" + search + "' at index '" + searchIdx + "' in the server's " + "response");
             // the new searchIdx is the old index plus the lenght of the
             // search string.
             startIdx = searchIdx + search.length();
