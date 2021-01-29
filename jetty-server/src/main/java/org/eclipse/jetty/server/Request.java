@@ -2384,10 +2384,10 @@ public class Request implements HttpServletRequest
             if (response.isCommitted())
                 throw new IllegalStateException("Cannot upgrade committed response");
 
-            AsyncContext asyncContext = forceStartAsync(); // force the servlet in async mode
+            _channel.servletUpgrade(); // tell the channel that it is now handling an upgraded servlet
             HttpConnection httpConnection = (HttpConnection)_channel.getConnection();
             httpConnection.getParser().servletUpgrade(); // tell the parser it's now parsing content
-            _channel.servletUpgrade(); // tell the channel that it is now handling an upgraded servlet
+            AsyncContext asyncContext = forceStartAsync(); // force the servlet in async mode
 
             T handler = handlerClass.getDeclaredConstructor().newInstance();
             ServletOutputStream outputStream = response.getOutputStream();
